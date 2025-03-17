@@ -18,7 +18,7 @@ import 'virtual:uno.css';
 export const links: LinksFunction = () => [
   {
     rel: 'icon',
-    href: '/favicon.svg',
+    href: '/faviconpommon.svg',
     type: 'image/svg+xml',
   },
   { rel: 'stylesheet', href: reactToastifyStyles },
