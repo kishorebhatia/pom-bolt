@@ -9,7 +9,10 @@ import { createScopedLogger } from '~/utils/logger';
 const logger = createScopedLogger('_index');
 
 export const meta: MetaFunction = () => {
-  return [{ title: 'Bolt' }, { name: 'description', content: 'Talk with Bolt, an AI assistant from StackBlitz' }];
+  return [
+    { title: 'Build Studio by Pommon' },
+    { name: 'description', content: 'Build your ideas with Build Studio by Pommon.' },
+  ];
 };
 
 export async function loader(args: LoaderFunctionArgs) {
