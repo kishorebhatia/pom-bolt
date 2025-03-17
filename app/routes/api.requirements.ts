@@ -6,12 +6,15 @@ interface RequirementData {
   content: string;
   timestamp: number;
   processed: boolean;
+  projectId?: string;
 }
 
 // Define interface for the request body
 interface RequirementsRequestBody {
   content?: string;
+  requirements?: string;
   markAsProcessed?: boolean;
+  projectId?: string;
 }
 
 let requirements: RequirementData | null = null;
@@ -33,7 +36,9 @@ export async function action({ request }: ActionFunctionArgs) {
       const formData = await request.formData();
       body = {
         content: formData.get('content')?.toString(),
+        requirements: formData.get('requirements')?.toString(),
         markAsProcessed: formData.get('markAsProcessed') === 'true',
+        projectId: formData.get('projectId')?.toString(),
       };
     }
 
@@ -49,12 +54,15 @@ export async function action({ request }: ActionFunctionArgs) {
       return json({ error: 'No requirements to mark as processed' }, { status: 404 });
     }
 
+    // Use either content or requirements field, preferring content if both are provided
+    const requirementsContent = body.content || body.requirements;
+
     // Handle new requirements submission
-    if (!body.content || typeof body.content !== 'string') {
+    if (!requirementsContent || typeof requirementsContent !== 'string') {
       console.error('Invalid content in request:', body);
       return json(
         {
-          error: 'Requirements content is required and must be a string',
+          error: 'Requirements content is required and must be a string (use field name "content" or "requirements")',
           received: body,
         },
         { status: 400 },
@@ -63,9 +71,10 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Store the requirements with a processed flag set to false
     requirements = {
-      content: body.content,
+      content: requirementsContent,
       timestamp: Date.now(),
       processed: false,
+      projectId: body.projectId,
     };
 
     console.log('Stored new requirements:', requirements);
@@ -89,6 +98,7 @@ export interface RequirementsResponseData {
   processed: boolean;
   timestamp: number | null;
   content: string | null;
+  projectId: string | null;
 }
 
 export async function loader({ request }: LoaderFunctionArgs) {
@@ -103,6 +113,7 @@ export async function loader({ request }: LoaderFunctionArgs) {
     processed: requirements?.processed || false,
     timestamp: requirements?.timestamp || null,
     content: requirements?.content || null,
+    projectId: requirements?.projectId || null,
   } as RequirementsResponseData);
 }
 
@@ -114,12 +125,13 @@ export function markRequirementsAsProcessed() {
 }
 
 // Helper function to get and consume the requirements
-export function getAndConsumeRequirements(): string | null {
+export function getAndConsumeRequirements(): { content: string; projectId?: string } | null {
   if (requirements && !requirements.processed) {
     const content = requirements.content;
+    const projectId = requirements.projectId;
     requirements.processed = true;
 
-    return content;
+    return { content, projectId };
   }
 
   return null;

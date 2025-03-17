@@ -9,7 +9,7 @@ import type { RequirementsResponseData } from '~/routes/api.requirements';
 const logger = createScopedLogger('file-upload');
 
 interface FileUploadProps {
-  onSendMessage?: (event: React.UIEvent, messageInput?: string) => void;
+  onSendMessage?: (event: React.UIEvent, messageInput?: string, projectId?: string) => void;
 }
 
 export function FileUpload({ onSendMessage }: FileUploadProps) {
@@ -36,16 +36,23 @@ export function FileUpload({ onSendMessage }: FileUploadProps) {
         }
 
         const data = (await response.json()) as RequirementsResponseData;
-        logger.debug('Polled requirements API', { hasRequirements: data.hasRequirements, processed: data.processed });
+        logger.debug('Polled requirements API', {
+          hasRequirements: data.hasRequirements,
+          processed: data.processed,
+          projectId: data.projectId,
+        });
 
         if (data.hasRequirements && !data.processed && data.content) {
-          logger.info('Detected webhook requirements', { timestamp: data.timestamp });
+          logger.info('Detected webhook requirements', {
+            timestamp: data.timestamp,
+            projectId: data.projectId || 'none',
+          });
           setPolling(true);
           setIsLoading(true);
           setProgress(50);
 
           // Process the requirements directly from the first response
-          await processRequirements('Webhook requirements', data.content);
+          await processRequirements('Webhook requirements', data.content, data.projectId || undefined);
         }
       } catch (error) {
         logger.error('Error checking for webhook requirements', { error });
@@ -66,17 +73,40 @@ export function FileUpload({ onSendMessage }: FileUploadProps) {
     };
   }, [onSendMessage, isLoading, toast]);
 
-  const processRequirements = async (source: string, content: string) => {
-    logger.info(`Processing requirements from ${source}`, { contentLength: content.length });
+  const processRequirements = async (source: string, content: string, projectId?: string) => {
+    logger.info(`Processing requirements from ${source}`, {
+      contentLength: content.length,
+      projectId: projectId || 'none',
+    });
     setProgress(80);
 
     try {
       // Use the chat system's sendMessage handler to process the content
       if (onSendMessage) {
-        logger.info('Sending requirements content to chat system');
-        onSendMessage({} as React.UIEvent, content);
-        logger.info('Requirements processed successfully');
-        toast('Your requirements have been processed');
+        // Get the current project ID from the URL if available
+        const currentPath = window.location.pathname;
+        const currentProjectId = currentPath.startsWith('/chat/') ? currentPath.split('/')[2] : null;
+
+        // Check if we need to redirect (different project or new project from project page)
+        const needsRedirect = (projectId && currentProjectId !== projectId) || (!projectId && currentProjectId);
+
+        logger.info('Sending requirements content to chat system', {
+          projectId: projectId || 'new project',
+          currentProjectId: currentProjectId || 'home',
+          needsRedirect,
+        });
+
+        if (needsRedirect) {
+          // For redirects, show a different toast since we're navigating away
+          toast('Requirements received, redirecting to appropriate page...');
+        } else {
+          toast('Processing your requirements...');
+        }
+
+        // Always include the projectId parameter, even if undefined
+        onSendMessage({} as React.UIEvent, content, projectId);
+
+        logger.info('Requirements request processed successfully');
 
         // Mark as processed to prevent duplicate processing
         if (source === 'Webhook requirements') {
@@ -101,13 +131,23 @@ export function FileUpload({ onSendMessage }: FileUploadProps) {
       logger.error('Error during requirements processing', { error });
       toast(errorMessage);
     } finally {
-      setProgress(100);
-      setTimeout(() => {
-        setProgress(0);
-        setIsLoading(false);
-        setPolling(false);
-        logger.debug('Requirements processing completed');
-      }, 500);
+      /*
+       * Only reset loading state if we're not redirecting
+       * (Otherwise it will flash the UI before navigation)
+       */
+      const currentPath = window.location.pathname;
+      const currentProjectId = currentPath.startsWith('/chat/') ? currentPath.split('/')[2] : null;
+      const needsRedirect = (projectId && currentProjectId !== projectId) || (!projectId && currentProjectId);
+
+      if (!needsRedirect) {
+        setProgress(100);
+        setTimeout(() => {
+          setProgress(0);
+          setIsLoading(false);
+          setPolling(false);
+          logger.debug('Requirements processing completed');
+        }, 500);
+      }
     }
   };
 
@@ -146,6 +186,10 @@ export function FileUpload({ onSendMessage }: FileUploadProps) {
       const content = await file.text();
       logger.debug('File content read successfully', { contentLength: content.length });
 
+      /*
+       * For file uploads, don't pass projectId - this preserves the original behavior
+       * where file uploads are treated as new projects
+       */
       await processRequirements(file.name, content);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Something went wrong';
@@ -159,14 +203,20 @@ export function FileUpload({ onSendMessage }: FileUploadProps) {
   // Simple manual test function for webhook - can be removed in production
   const testWebhook = async () => {
     try {
+      // Prompt for project ID during testing
+      const projectId = prompt('Enter a project ID for testing (leave empty for new project):');
+
       const response = await fetch('/api/requirements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: 'Test requirements from frontend' }),
+        body: JSON.stringify({
+          content: 'Test requirements from frontend',
+          projectId: projectId || undefined, // Only include projectId if provided
+        }),
       });
 
       if (response.ok) {
-        toast('Test webhook triggered successfully');
+        toast(`Test webhook triggered successfully${projectId ? ` for project ${projectId}` : ''}`);
       } else {
         const data = (await response.json()) as { error?: string };
         toast(`Test webhook failed: ${data.error || 'Unknown error'}`);

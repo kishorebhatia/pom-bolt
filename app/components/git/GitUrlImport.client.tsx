@@ -134,7 +134,15 @@ ${escapeBoltTags(file.content)}
   }, [searchParams, historyReady, gitReady, imported]);
 
   return (
-    <ClientOnly fallback={<BaseChat />}>
+    <ClientOnly
+      fallback={
+        <BaseChat
+          sendMessage={() => {
+            /* Placeholder function to satisfy the type requirement */
+          }}
+        />
+      }
+    >
       {() => (
         <>
           <Chat />

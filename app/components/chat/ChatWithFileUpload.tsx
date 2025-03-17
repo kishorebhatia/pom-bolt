@@ -1,23 +1,29 @@
 import { FileUpload } from '~/components/file-input/file-upload';
 import { BaseChat } from './BaseChat';
-import type { BaseChatProps } from './BaseChat';
 
 // import { Message } from "@/app/lib/types"
 
-interface ChatWithFileUploadProps extends Omit<BaseChatProps, 'enhancePrompt'> {
+// Create a type that correctly represents sendMessage with projectId
+type SendMessageWithProjectId = (event: React.UIEvent, messageInput?: string, projectId?: string) => void;
+
+interface ChatWithFileUploadProps {
   onFileUpload?: (content: string) => void;
   enhancePrompt?: (input: string) => void;
+  sendMessage?: SendMessageWithProjectId;
+
+  // Include all other BaseChatProps except enhancePrompt which we override
+  [key: string]: any;
 }
 
 export function ChatWithFileUpload(props: ChatWithFileUploadProps) {
   const { enhancePrompt, sendMessage, ...restProps } = props;
 
   // Handle file/requirements upload through a central handler
-  const handleRequirementsUpload = (event: React.UIEvent, content?: string) => {
+  const handleRequirementsUpload = (event: React.UIEvent, content?: string, projectId?: string) => {
     if (content) {
       // Use the same sendMessage handler for both file uploads and webhook requirements
       if (sendMessage) {
-        sendMessage(event, content);
+        sendMessage(event, content, projectId);
       }
 
       // If there's a specialized onFileUpload handler, call that too
@@ -37,7 +43,12 @@ export function ChatWithFileUpload(props: ChatWithFileUploadProps) {
       <div className="flex-1">
         <BaseChat
           {...restProps}
-          sendMessage={sendMessage}
+          sendMessage={
+            sendMessage ||
+            ((_event, _messageInput) => {
+              /* Provide a default no-op function */
+            })
+          }
           enhancePrompt={enhancePrompt ? () => enhancePrompt(restProps.input || '') : undefined}
         />
       </div>

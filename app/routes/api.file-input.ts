@@ -14,25 +14,45 @@ export async function action({ request }: ActionFunctionArgs) {
   try {
     logger.info('Processing file input request');
 
-    const { content, fileName } = await request.json<{
+    const requestData = await request.json<{
       content: string;
-      fileName: string;
+      fileName?: string;
+      projectId?: string;
+      requirements?: string; // Support 'requirements' field for backward compatibility
     }>();
 
-    logger.debug('Received file content:', { fileName, contentLength: content.length });
+    // Use either content or requirements field
+    const content = requestData.content || requestData.requirements || '';
+    const fileName = requestData.fileName || 'webhook-requirements.txt';
+    const projectId = requestData.projectId;
+
+    logger.debug('Received file content:', {
+      fileName,
+      contentLength: content.length,
+      projectId: projectId || 'none',
+    });
 
     // Process the file content
-    logger.info('Starting file content processing');
+    logger.info('Starting file content processing', {
+      isExistingProject: !!projectId,
+    });
 
-    const { messages, contextOptimization, files } = await FileProcessor.processContent(content);
+    // Determine if this is for an existing project
+    const isExistingProject = !!projectId;
+
+    const { messages, contextOptimization, files } = await FileProcessor.processContent(content, isExistingProject);
+
     logger.debug('File processing completed:', {
       messageCount: messages.length,
       contextOptimization,
       fileCount: Object.keys(files || {}).length,
+      isExistingProject,
     });
 
     // Create a chat request using the existing chat endpoint
-    logger.info('Creating chat request');
+    logger.info('Creating chat request', {
+      projectId: projectId || 'none',
+    });
 
     const chatResponse = await fetch(new URL('/api/chat', request.url), {
       method: 'POST',
@@ -45,6 +65,7 @@ export async function action({ request }: ActionFunctionArgs) {
         contextOptimization,
         files: files || {},
         promptId: 'file-input',
+        projectId, // Pass projectId to the chat API if available
       }),
     });
 
@@ -66,7 +87,7 @@ export async function action({ request }: ActionFunctionArgs) {
           type: 'progress',
           label: 'file-processing',
           status: 'complete',
-          message: 'File processed successfully',
+          message: isExistingProject ? 'Feature requests processed successfully' : 'File processed successfully',
         });
 
         // Forward the chat response stream
@@ -126,7 +147,9 @@ export async function action({ request }: ActionFunctionArgs) {
           type: 'progress',
           label: 'preview',
           status: 'complete',
-          message: 'Code generation and deployment complete',
+          message: isExistingProject
+            ? 'Feature implementation and deployment complete'
+            : 'Code generation and deployment complete',
         });
       },
       onError: (error: any) => {

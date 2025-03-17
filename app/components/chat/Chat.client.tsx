@@ -37,7 +37,15 @@ const logger = createScopedLogger('Chat');
 export function Chat() {
   renderLogger.trace('Chat');
 
-  const { ready, initialMessages, storeMessageHistory, importChat, exportChat } = useChatHistory();
+  const {
+    ready,
+    initialMessages,
+    initialRequirements,
+    hasInitialRequirements,
+    storeMessageHistory,
+    importChat,
+    exportChat,
+  } = useChatHistory();
   const title = useStore(description);
   useEffect(() => {
     workbenchStore.setReloadedMessages(initialMessages.map((m) => m.id));
@@ -49,6 +57,8 @@ export function Chat() {
         <ChatImpl
           description={title}
           initialMessages={initialMessages}
+          initialRequirements={typeof initialRequirements === 'string' ? initialRequirements : undefined}
+          hasInitialRequirements={!!hasInitialRequirements && typeof initialRequirements === 'string'}
           exportChat={exportChat}
           storeMessageHistory={storeMessageHistory}
           importChat={importChat}
@@ -105,6 +115,8 @@ const processSampledMessages = createSampler(
 
 interface ChatProps {
   initialMessages: Message[];
+  initialRequirements?: string;
+  hasInitialRequirements?: boolean;
   storeMessageHistory: (messages: Message[]) => Promise<void>;
   importChat: (description: string, messages: Message[]) => Promise<void>;
   exportChat: () => void;
@@ -112,7 +124,15 @@ interface ChatProps {
 }
 
 export const ChatImpl = memo(
-  ({ description, initialMessages, storeMessageHistory, importChat, exportChat }: ChatProps) => {
+  ({
+    description,
+    initialMessages,
+    initialRequirements,
+    hasInitialRequirements,
+    storeMessageHistory,
+    importChat,
+    exportChat,
+  }: ChatProps) => {
     useShortcuts();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -281,7 +301,7 @@ export const ChatImpl = memo(
       setChatStarted(true);
     };
 
-    const sendMessage = async (_event: React.UIEvent, messageInput?: string) => {
+    const sendMessage = async (_event: React.UIEvent, messageInput?: string, projectId?: string) => {
       const messageContent = messageInput || input;
 
       if (!messageContent?.trim()) {
@@ -291,6 +311,63 @@ export const ChatImpl = memo(
       if (isLoading) {
         abort();
         return;
+      }
+
+      // Get the current project ID from the URL if available
+      const currentPath = window.location.pathname;
+      const currentProjectId = currentPath.startsWith('/chat/') ? currentPath.split('/')[2] : null;
+
+      // Check if this is a webhook-initiated request by looking at the event properties
+      const isWebhookRequest = Object.keys(_event).length === 0;
+
+      // If a specific projectId is provided
+      if (projectId) {
+        logger.info('Project ID detected in request', { projectId, isWebhookRequest });
+
+        if (currentProjectId !== projectId) {
+          logger.info('Navigating to project page', {
+            from: currentProjectId || 'home',
+            to: projectId,
+          });
+
+          /*
+           * Navigate to the project page and pass the requirements
+           * Use window.location.replace to avoid adding to browser history
+           * This prevents the issue of navigating back to home page after redirect
+           */
+          window.location.replace(`/chat/${projectId}?initialRequirements=${encodeURIComponent(messageContent)}`);
+
+          return;
+        }
+
+        logger.info('Already on correct project page, processing requirements', { projectId });
+      } else if (isWebhookRequest && currentProjectId) {
+        /*
+         * No projectId provided but this is a webhook request and we're on a project page
+         * We should navigate to the home page to create a new project
+         */
+        logger.info('Webhook request without project ID on project page. Navigating to home page for new project.', {
+          from: currentProjectId,
+        });
+
+        // Display a toast to inform the user about redirecting
+        toast('Creating a new project from your requirements...', {
+          type: 'info',
+        });
+
+        /*
+         * Navigate to the home page with a special flag to indicate this is from a webhook
+         * This helps with handling the animation and UI state on the home page
+         */
+        window.location.replace(`/?initialRequirements=${encodeURIComponent(messageContent)}&fromWebhook=true`);
+
+        return;
+      } else {
+        // Normal user input or webhook on home page - create a new project
+        logger.info('Processing as new project or regular chat input', {
+          currentLocation: currentProjectId ? `project/${currentProjectId}` : 'home',
+          isWebhookRequest,
+        });
       }
 
       runAnimation();
@@ -338,8 +415,6 @@ export const ChatImpl = memo(
               ]);
               reload();
 
-              // setFakeLoading(false);
-
               return;
             }
           }
@@ -363,8 +438,6 @@ export const ChatImpl = memo(
           },
         ]);
         reload();
-
-        // setFakeLoading(false);
 
         return;
       }
@@ -419,6 +492,11 @@ export const ChatImpl = memo(
       resetEnhancer();
 
       textareaRef.current?.blur();
+
+      // Clear the URL parameter to prevent duplication on page refresh
+      const url = new URL(window.location.href);
+      url.searchParams.delete('initialRequirements');
+      window.history.replaceState({}, '', url);
     };
 
     /**
@@ -466,6 +544,80 @@ export const ChatImpl = memo(
       content: parsedMessages[i] || message.content,
     }));
 
+    // Add effect to process initialRequirements when the component is loaded
+    useEffect(() => {
+      // Process initial requirements if they exist
+      if (hasInitialRequirements && initialRequirements) {
+        logger.info('Processing initial requirements from URL', {
+          length: initialRequirements.length,
+          chatStarted,
+        });
+
+        // Force start the chat if it's not already started but we have initial requirements
+        if (!chatStarted) {
+          setChatStarted(true);
+          chatStore.setKey('started', true);
+          logger.info('Force starting chat for initial requirements');
+        }
+
+        // Use a larger timeout to ensure the chat UI is fully ready before processing
+        setTimeout(() => {
+          const messageContent = initialRequirements;
+          logger.info('Processing initialRequirements directly', {
+            length: messageContent.length,
+            chatStarted: chatStarted || true, // Will be true after the force start above
+          });
+
+          // If not already started, we need to trigger the animation
+          if (!document.querySelector('.animate-fade-in')) {
+            runAnimation().catch((error) => {
+              logger.error('Failed to run animation', { error });
+            });
+          }
+
+          // For a new project (or if chat was force-started), use setMessages
+          if (!initialMessages.length) {
+            logger.info('Setting initial message for new project');
+            setMessages([
+              {
+                id: `${new Date().getTime()}`,
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${messageContent}`,
+                  },
+                ] as any,
+              },
+            ]);
+            reload();
+          } else {
+            // For existing projects with chat already started, use append
+            logger.info('Appending message to existing chat');
+
+            if (error != null) {
+              setMessages(messages.slice(0, -1));
+            }
+
+            append({
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: `[Model: ${model}]\n\n[Provider: ${provider.name}]\n\n${messageContent}`,
+                },
+              ] as any,
+            });
+          }
+
+          // Clear the URL parameter to prevent duplication on page refresh
+          const url = new URL(window.location.href);
+          url.searchParams.delete('initialRequirements');
+          window.history.replaceState({}, '', url);
+        }, 1500); // Increased timeout for better reliability
+      }
+    }, [initialRequirements, hasInitialRequirements, model, provider, initialMessages.length]);
+
     return (
       <div ref={animationScope} className="flex flex-col h-full">
         <ChatWithFileUpload
@@ -475,7 +627,7 @@ export const ChatImpl = memo(
           showChat={showChat}
           chatStarted={chatStarted}
           isStreaming={isLoading}
-          onStreamingChange={(streaming) => {
+          onStreamingChange={(streaming: boolean) => {
             streamingState.set(streaming);
           }}
           messages={processedMessages}
@@ -490,7 +642,7 @@ export const ChatImpl = memo(
           providerList={activeProviders}
           handleStop={abort}
           sendMessage={sendMessage}
-          handleInputChange={(e) => {
+          handleInputChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
             onTextareaChange(e);
             debouncedCachePrompt(e);
           }}
