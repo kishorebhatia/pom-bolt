@@ -16,12 +16,12 @@ export class FileProcessor {
   static async processContent(content: string): Promise<FileProcessorResult> {
     try {
       logger.info('Starting file content processing');
-      
+
       // Process requirements line by line
       const requirements = content
         .split('\n')
-        .filter(line => line.trim())
-        .map(line => line.trim());
+        .filter((line) => line.trim())
+        .map((line) => line.trim());
 
       logger.info(`Found ${requirements.length} requirements in file`);
 
@@ -89,10 +89,11 @@ Please analyze these requirements and provide a complete implementation plan wit
       };
 
       logger.info('File processing completed successfully');
+
       return result;
     } catch (error) {
       logger.error('Error processing file content:', error);
       throw new Error('Failed to process file content');
     }
   }
-} 
+}

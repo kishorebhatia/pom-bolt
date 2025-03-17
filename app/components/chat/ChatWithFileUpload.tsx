@@ -1,7 +1,8 @@
 import { FileUpload } from '~/components/file-input/file-upload';
 import { BaseChat } from './BaseChat';
 import type { BaseChatProps } from './BaseChat';
-import type { Message } from 'ai';
+
+// import { Message } from "@/app/lib/types"
 
 interface ChatWithFileUploadProps extends Omit<BaseChatProps, 'enhancePrompt'> {
   onFileUpload?: (content: string) => void;
@@ -26,4 +27,4 @@ export function ChatWithFileUpload(props: ChatWithFileUploadProps) {
       </div>
     </div>
   );
-} 
+}

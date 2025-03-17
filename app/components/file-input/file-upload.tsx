@@ -6,7 +6,6 @@ import { Progress } from '~/components/ui/Progress';
 import { createScopedLogger } from '~/utils/logger';
 import { useChat } from 'ai/react';
 import { workbenchStore } from '~/lib/stores/workbench';
-import { TerminalStore } from '~/lib/stores/terminal';
 import { FilesStore } from '~/lib/stores/files';
 import { webcontainer } from '~/lib/webcontainer';
 
@@ -24,6 +23,7 @@ export function FileUpload() {
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+
     if (!file) {
       logger.debug('No file selected');
       return;
@@ -35,6 +35,7 @@ export function FileUpload() {
     if (file.type !== 'text/plain') {
       logger.warn('Invalid file type:', { type: file.type });
       toast('Please upload a text file (.txt)');
+
       return;
     }
 
@@ -42,6 +43,7 @@ export function FileUpload() {
     if (file.size > 1024 * 1024) {
       logger.warn('File too large:', { size: file.size });
       toast('Please upload a file smaller than 1MB');
+
       return;
     }
 
@@ -50,12 +52,14 @@ export function FileUpload() {
 
     try {
       logger.debug('Reading file content');
+
       // Simulate progress for file reading
       const content = await file.text();
       logger.debug('File content read successfully', { contentLength: content.length });
       setProgress(50);
 
       logger.info('Sending file content to API');
+
       const response = await fetch('/api/file-input', {
         method: 'POST',
         headers: {
@@ -68,7 +72,7 @@ export function FileUpload() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json() as ErrorResponse;
+        const errorData = (await response.json()) as ErrorResponse;
         logger.error('API request failed:', { status: response.status, error: errorData });
         throw new Error(errorData.error || 'Failed to process file');
       }
@@ -79,6 +83,7 @@ export function FileUpload() {
 
       // Handle streaming response
       const reader = response.body?.getReader();
+
       if (!reader) {
         throw new Error('Failed to get response reader');
       }
@@ -89,7 +94,10 @@ export function FileUpload() {
       // Process the stream
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+
+        if (done) {
+          break;
+        }
 
         // Convert the chunk to text
         const chunk = new TextDecoder().decode(value);
@@ -98,8 +106,10 @@ export function FileUpload() {
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             const data = line.slice(6);
+
             try {
               const parsed = JSON.parse(data);
+
               if (parsed.type === 'message') {
                 await append({
                   role: parsed.role,
@@ -183,9 +193,7 @@ export function FileUpload() {
           {isLoading ? 'Processing...' : 'Upload Requirements'}
         </Button>
       </div>
-      {isLoading && (
-        <Progress value={progress} className="w-full" />
-      )}
+      {isLoading && <Progress value={progress} className="w-full" />}
     </div>
   );
-} 
+}

@@ -120,7 +120,6 @@ export const ChatImpl = memo(
     const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
     const [imageDataList, setImageDataList] = useState<string[]>([]);
     const [searchParams, setSearchParams] = useSearchParams();
-    const [fakeLoading, setFakeLoading] = useState(false);
     const files = useStore(workbenchStore.files);
     const actionAlert = useStore(workbenchStore.alert);
     const { activeProviders, promptId, autoSelectTemplate, contextOptimizationEnabled } = useSettings();
@@ -297,7 +296,7 @@ export const ChatImpl = memo(
       runAnimation();
 
       if (!chatStarted) {
-        setFakeLoading(true);
+        // const [fakeLoading, setFakeLoading] = useState(false); // TODO: Will be used for loading states
 
         if (autoSelectTemplate) {
           const { template, title } = await selectStarterTemplate({
@@ -338,7 +337,8 @@ export const ChatImpl = memo(
                 },
               ]);
               reload();
-              setFakeLoading(false);
+
+              // setFakeLoading(false);
 
               return;
             }
@@ -363,7 +363,8 @@ export const ChatImpl = memo(
           },
         ]);
         reload();
-        setFakeLoading(false);
+
+        // setFakeLoading(false);
 
         return;
       }

@@ -1,7 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { FileProcessor } from '~/lib/.server/file-processing/file-processor';
 import { createScopedLogger } from '~/utils/logger';
-import { WORK_DIR } from '~/utils/constants';
 import { createDataStream } from 'ai';
 
 const logger = createScopedLogger('api.file-input');
@@ -14,6 +13,7 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     logger.info('Processing file input request');
+
     const { content, fileName } = await request.json<{
       content: string;
       fileName: string;
@@ -23,20 +23,22 @@ export async function action({ request }: ActionFunctionArgs) {
 
     // Process the file content
     logger.info('Starting file content processing');
+
     const { messages, contextOptimization, files } = await FileProcessor.processContent(content);
-    logger.debug('File processing completed:', { 
+    logger.debug('File processing completed:', {
       messageCount: messages.length,
       contextOptimization,
-      fileCount: Object.keys(files || {}).length
+      fileCount: Object.keys(files || {}).length,
     });
 
     // Create a chat request using the existing chat endpoint
     logger.info('Creating chat request');
+
     const chatResponse = await fetch(new URL('/api/chat', request.url), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Cookie': request.headers.get('Cookie') || '',
+        Cookie: request.headers.get('Cookie') || '',
       },
       body: JSON.stringify({
         messages,
@@ -47,9 +49,9 @@ export async function action({ request }: ActionFunctionArgs) {
     });
 
     if (!chatResponse.ok) {
-      logger.error('Chat request failed:', { 
+      logger.error('Chat request failed:', {
         status: chatResponse.status,
-        statusText: chatResponse.statusText 
+        statusText: chatResponse.statusText,
       });
       throw new Error('Failed to process chat request');
     }
@@ -69,13 +71,17 @@ export async function action({ request }: ActionFunctionArgs) {
 
         // Forward the chat response stream
         const reader = chatResponse.body?.getReader();
+
         if (!reader) {
           throw new Error('Failed to get response reader');
         }
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+
+          if (done) {
+            break;
+          }
 
           // Convert the chunk to text
           const chunk = new TextDecoder().decode(value);
@@ -84,8 +90,10 @@ export async function action({ request }: ActionFunctionArgs) {
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
+
               try {
                 const parsed = JSON.parse(data);
+
                 if (parsed.type === 'message') {
                   dataStream.writeData({
                     type: 'message',
@@ -132,7 +140,7 @@ export async function action({ request }: ActionFunctionArgs) {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
       },
     });
   } catch (error) {
@@ -141,7 +149,7 @@ export async function action({ request }: ActionFunctionArgs) {
       JSON.stringify({
         error: error instanceof Error ? error.message : 'Failed to process file input',
       }),
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}
