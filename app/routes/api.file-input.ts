@@ -1,7 +1,6 @@
 import { type ActionFunctionArgs } from '@remix-run/cloudflare';
 import { FileProcessor } from '~/lib/.server/file-processing/file-processor';
 import { createScopedLogger } from '~/utils/logger';
-import { WORK_DIR } from '~/utils/constants';
 import { createDataStream } from 'ai';
 
 const logger = createScopedLogger('api.file-input');
@@ -14,42 +13,66 @@ export async function action({ request }: ActionFunctionArgs) {
 
   try {
     logger.info('Processing file input request');
-    const { content, fileName } = await request.json<{
+
+    const requestData = await request.json<{
       content: string;
-      fileName: string;
+      fileName?: string;
+      projectId?: string;
+      requirements?: string; // Support 'requirements' field for backward compatibility
     }>();
 
-    logger.debug('Received file content:', { fileName, contentLength: content.length });
+    // Use either content or requirements field
+    const content = requestData.content || requestData.requirements || '';
+    const fileName = requestData.fileName || 'webhook-requirements.txt';
+    const projectId = requestData.projectId;
+
+    logger.debug('Received file content:', {
+      fileName,
+      contentLength: content.length,
+      projectId: projectId || 'none',
+    });
 
     // Process the file content
-    logger.info('Starting file content processing');
-    const { messages, contextOptimization, files } = await FileProcessor.processContent(content);
-    logger.debug('File processing completed:', { 
+    logger.info('Starting file content processing', {
+      isExistingProject: !!projectId,
+    });
+
+    // Determine if this is for an existing project
+    const isExistingProject = !!projectId;
+
+    const { messages, contextOptimization, files } = await FileProcessor.processContent(content, isExistingProject);
+
+    logger.debug('File processing completed:', {
       messageCount: messages.length,
       contextOptimization,
-      fileCount: Object.keys(files || {}).length
+      fileCount: Object.keys(files || {}).length,
+      isExistingProject,
     });
 
     // Create a chat request using the existing chat endpoint
-    logger.info('Creating chat request');
+    logger.info('Creating chat request', {
+      projectId: projectId || 'none',
+    });
+
     const chatResponse = await fetch(new URL('/api/chat', request.url), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Cookie': request.headers.get('Cookie') || '',
+        Cookie: request.headers.get('Cookie') || '',
       },
       body: JSON.stringify({
         messages,
         contextOptimization,
         files: files || {},
         promptId: 'file-input',
+        projectId, // Pass projectId to the chat API if available
       }),
     });
 
     if (!chatResponse.ok) {
-      logger.error('Chat request failed:', { 
+      logger.error('Chat request failed:', {
         status: chatResponse.status,
-        statusText: chatResponse.statusText 
+        statusText: chatResponse.statusText,
       });
       throw new Error('Failed to process chat request');
     }
@@ -64,18 +87,22 @@ export async function action({ request }: ActionFunctionArgs) {
           type: 'progress',
           label: 'file-processing',
           status: 'complete',
-          message: 'File processed successfully',
+          message: isExistingProject ? 'Feature requests processed successfully' : 'File processed successfully',
         });
 
         // Forward the chat response stream
         const reader = chatResponse.body?.getReader();
+
         if (!reader) {
           throw new Error('Failed to get response reader');
         }
 
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+
+          if (done) {
+            break;
+          }
 
           // Convert the chunk to text
           const chunk = new TextDecoder().decode(value);
@@ -84,8 +111,10 @@ export async function action({ request }: ActionFunctionArgs) {
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
+
               try {
                 const parsed = JSON.parse(data);
+
                 if (parsed.type === 'message') {
                   dataStream.writeData({
                     type: 'message',
@@ -118,7 +147,9 @@ export async function action({ request }: ActionFunctionArgs) {
           type: 'progress',
           label: 'preview',
           status: 'complete',
-          message: 'Code generation and deployment complete',
+          message: isExistingProject
+            ? 'Feature implementation and deployment complete'
+            : 'Code generation and deployment complete',
         });
       },
       onError: (error: any) => {
@@ -132,7 +163,7 @@ export async function action({ request }: ActionFunctionArgs) {
       headers: {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
+        Connection: 'keep-alive',
       },
     });
   } catch (error) {
@@ -141,7 +172,7 @@ export async function action({ request }: ActionFunctionArgs) {
       JSON.stringify({
         error: error instanceof Error ? error.message : 'Failed to process file input',
       }),
-      { status: 500 }
+      { status: 500 },
     );
   }
-} 
+}

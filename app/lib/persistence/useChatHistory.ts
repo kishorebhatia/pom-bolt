@@ -39,13 +39,34 @@ export const description = atom<string | undefined>(undefined);
 export const chatMetadata = atom<IChatMetadata | undefined>(undefined);
 export function useChatHistory() {
   const navigate = useNavigate();
-  const { id: mixedId } = useLoaderData<{ id?: string }>();
+  const {
+    id: mixedId,
+    initialRequirements,
+    fromWebhook,
+  } = useLoaderData<{
+    id?: string;
+    initialRequirements?: string | null;
+    fromWebhook?: boolean;
+  }>();
   const [searchParams] = useSearchParams();
 
   const [archivedMessages, setArchivedMessages] = useState<Message[]>([]);
   const [initialMessages, setInitialMessages] = useState<Message[]>([]);
   const [ready, setReady] = useState<boolean>(false);
   const [urlId, setUrlId] = useState<string | undefined>();
+  const [hasInitialRequirements, setHasInitialRequirements] = useState<boolean>(false);
+
+  useEffect(() => {
+    // Check if we have initial requirements passed via URL
+    if (initialRequirements) {
+      setHasInitialRequirements(true);
+      console.log('Initial requirements detected in URL', {
+        initialRequirements,
+        fromWebhook: fromWebhook || false,
+        length: initialRequirements.length,
+      });
+    }
+  }, [initialRequirements, fromWebhook]);
 
   useEffect(() => {
     if (!db) {
@@ -258,6 +279,8 @@ ${value.content}
   return {
     ready: !mixedId || ready,
     initialMessages,
+    initialRequirements, // Return initialRequirements to be used by the Chat component
+    hasInitialRequirements,
     updateChatMestaData: async (metadata: IChatMetadata) => {
       const id = chatId.get();
 
