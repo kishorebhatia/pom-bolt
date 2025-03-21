@@ -125,6 +125,10 @@ export default defineConfig((config) => {
         },
       },
     },
+    server: {
+      port: 5173,
+      allowedHosts: ['grand-heron-radically.ngrok-free.app']
+    }
   };
 });
 
