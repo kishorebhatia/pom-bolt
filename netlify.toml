@@ -1,0 +1,10 @@
+[build]
+  command = "pnpm run build"
+  publish = "build/client"
+  base = "/"
+
+[build.environment]
+  NODE_VERSION = "18.18.0"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs" 
