@@ -1,10 +1,11 @@
 [build]
-  command = "pnpm run build"
+  command = "NODE_OPTIONS=--max_old_space_size=4096 pnpm run build"
   publish = "build/client"
   base = "/"
 
 [build.environment]
   NODE_VERSION = "18.18.0"
+  NODE_OPTIONS = "--max_old_space_size=4096"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs" 
