@@ -122,6 +122,8 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.0",
+    "remark-rehype": "^11.1.0",
+    "mdast-util-to-hast": "^13.0.0",
     "remix-island": "^0.2.0",
     "remix-utils": "^7.7.0",
     "shiki": "^1.24.0",
@@ -166,7 +168,8 @@
     "zod": "^3.24.1"
   },
   "resolutions": {
-    "@typescript-eslint/utils": "^8.0.0-alpha.30"
+    "@typescript-eslint/utils": "^8.0.0-alpha.30",
+    "mdast-util-to-hast": "^13.0.0"
   },
   "packageManager": "pnpm@9.4.0"
 }
